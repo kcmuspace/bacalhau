@@ -41,7 +41,7 @@ func (s *lotusNodeSuite) SetupTest() {
 }
 
 func (s *lotusNodeSuite) TestLotusNode() {
-	testutils.SkipLotus(s.T(), "https://github.com/filecoin-project/bacalhau/pull/1865")
+	s.T().Skip("Test is flaky", "https://github.com/filecoin-project/bacalhau/issues/1705", "pkg/publisher/filecoin_lotus/publisher_test.go")
 	testutils.SkipIfArm(s.T(), "https://github.com/filecoin-project/bacalhau/issues/1267")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
@@ -75,12 +75,11 @@ func (s *lotusNodeSuite) TestLotusNode() {
 	err = resolver.Wait(
 		ctx,
 		submittedJob.Metadata.ID,
-		len(nodeIDs),
-		job.WaitThrowErrors([]model.JobStateType{
-			model.JobStateError,
+		job.WaitExecutionsThrowErrors([]model.ExecutionStateType{
+			model.ExecutionStateFailed,
 		}),
-		job.WaitForJobStates(map[model.JobStateType]int{
-			model.JobStateCompleted: len(nodeIDs),
+		job.WaitForExecutionStates(map[model.ExecutionStateType]int{
+			model.ExecutionStateCompleted: len(nodeIDs),
 		}),
 	)
 	require.NoError(s.T(), err)

@@ -7,7 +7,7 @@ import (
 
 	"github.com/filecoin-project/bacalhau/pkg/config"
 	"github.com/filecoin-project/bacalhau/pkg/ipfs"
-	"github.com/filecoin-project/bacalhau/pkg/localdb"
+	"github.com/filecoin-project/bacalhau/pkg/jobstore"
 	"github.com/filecoin-project/bacalhau/pkg/model"
 	"github.com/filecoin-project/bacalhau/pkg/publicapi"
 	filecoinlotus "github.com/filecoin-project/bacalhau/pkg/publisher/filecoin_lotus"
@@ -34,7 +34,7 @@ const DefaultNodeInfoPublisherInterval = 30 * time.Second
 type NodeConfig struct {
 	IPFSClient                ipfs.Client
 	CleanupManager            *system.CleanupManager
-	LocalDB                   localdb.LocalDB
+	JobStore                  jobstore.Store
 	Host                      host.Host
 	FilecoinUnsealedPath      string
 	EstuaryAPIKey             string
@@ -101,6 +101,9 @@ func NewNode(
 	ctx context.Context,
 	config NodeConfig,
 	injector NodeDependencyInjector) (*Node, error) {
+	ctx, span := system.NewSpan(ctx, system.GetTracer(), "pkg/node.NewNode")
+	defer span.End()
+
 	identify.ActivationThresh = 2
 
 	err := mergo.Merge(&config.APIServerConfig, publicapi.DefaultAPIServerConfig)
@@ -130,7 +133,7 @@ func NewNode(
 
 	var simulatorRequestHandler *simulator.RequestHandler
 	if config.SimulatorNodeID == config.Host.ID().String() {
-		log.Info().Msgf("Node %s is the simulator node. Setting proper event handlers", config.Host.ID().String())
+		log.Ctx(ctx).Info().Msgf("Node %s is the simulator node. Setting proper event handlers", config.Host.ID().String())
 		simulatorRequestHandler = simulator.NewRequestHandler()
 	}
 
@@ -215,7 +218,7 @@ func NewNode(
 			routedHost,
 			apiServer,
 			config.RequesterNodeConfig,
-			config.LocalDB,
+			config.JobStore,
 			config.SimulatorNodeID,
 			simulatorRequestHandler,
 			verifiers,
@@ -227,8 +230,6 @@ func NewNode(
 			gossipSubCancel()
 			return nil, err
 		}
-		// subscribe additional consumers of node info published over gossipSub
-		nodeInfoSubscriber.Add(pubsub.SubscriberFunc[model.NodeInfo](requesterNode.requesterAPIServer.PushNodeInfoToWebsocket))
 	}
 
 	if config.IsComputeNode {
@@ -254,24 +255,23 @@ func NewNode(
 	}
 
 	// cleanup libp2p resources in the desired order
-	config.CleanupManager.RegisterCallback(func() error {
-		cleanupCtx := context.Background()
+	config.CleanupManager.RegisterCallbackWithContext(func(ctx context.Context) error {
 		if computeNode != nil {
-			computeNode.cleanup(cleanupCtx)
+			computeNode.cleanup(ctx)
 		}
 		if requesterNode != nil {
-			requesterNode.cleanup(cleanupCtx)
+			requesterNode.cleanup(ctx)
 		}
-		nodeInfoPublisher.Stop()
-		cleanupErr := nodeInfoPubSub.Close(cleanupCtx)
+		nodeInfoPublisher.Stop(ctx)
+		cleanupErr := nodeInfoPubSub.Close(ctx)
 		if cleanupErr != nil {
-			log.Error().Err(cleanupErr).Msg("failed to close libp2p node info pubsub")
+			log.Ctx(ctx).Error().Err(cleanupErr).Msg("failed to close libp2p node info pubsub")
 		}
 		gossipSubCancel()
 
 		cleanupErr = config.Host.Close()
 		if cleanupErr != nil {
-			log.Error().Err(cleanupErr).Msg("failed to close host")
+			log.Ctx(ctx).Error().Err(cleanupErr).Msg("failed to close host")
 		}
 		return cleanupErr
 	})

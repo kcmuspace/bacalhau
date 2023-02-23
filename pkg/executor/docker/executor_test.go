@@ -39,7 +39,9 @@ func (s *ExecutorTestSuite) SetupTest() {
 
 	var err error
 	s.cm = system.NewCleanupManager()
-	s.T().Cleanup(s.cm.Cleanup)
+	s.T().Cleanup(func() {
+		s.cm.Cleanup(context.Background())
+	})
 
 	s.executor, err = NewExecutor(
 		context.Background(),
@@ -60,7 +62,7 @@ func (s *ExecutorTestSuite) SetupTest() {
 	// the "docker0" interface.
 	var gateway net.IP
 	if runtime.GOOS == "linux" {
-		gateway, err = docker.HostGatewayIP(context.Background(), s.executor.Client)
+		gateway, err = s.executor.client.HostGatewayIP(context.Background())
 		require.NoError(s.T(), err)
 	} else {
 		gateway = net.ParseIP("127.0.0.1")

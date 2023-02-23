@@ -47,6 +47,8 @@ func newDevStackOptions() *devstack.DevStackOptions {
 		LocalNetworkLotus:          false,
 		SimulatorAddr:              "",
 		SimulatorMode:              false,
+		CPUProfilingFile:           "",
+		MemoryProfilingFile:        "",
 	}
 }
 
@@ -109,6 +111,14 @@ func newDevStackCmd() *cobra.Command {
 		&ODs.PublicIPFSMode, "public-ipfs", ODs.PublicIPFSMode,
 		`Connect devstack to public IPFS`,
 	)
+	devstackCmd.PersistentFlags().StringVar(
+		&ODs.CPUProfilingFile, "cpu-profiling-file", ODs.CPUProfilingFile,
+		"File to save CPU profiling to",
+	)
+	devstackCmd.PersistentFlags().StringVar(
+		&ODs.MemoryProfilingFile, "memory-profiling-file", ODs.MemoryProfilingFile,
+		"File to save memory profiling to",
+	)
 
 	setupJobSelectionCLIFlags(devstackCmd, OS)
 	setupCapacityManagerCLIFlags(devstackCmd, OS)
@@ -117,13 +127,13 @@ func newDevStackCmd() *cobra.Command {
 }
 
 func runDevstack(cmd *cobra.Command, ODs *devstack.DevStackOptions, OS *ServeOptions, IsNoop bool) error {
-	cm := system.NewCleanupManager()
-	defer cm.Cleanup()
 	ctx := cmd.Context()
 
-	ctx, rootSpan := system.NewRootSpan(ctx, system.GetTracer(), "cmd/bacalhau/devstack")
-	defer rootSpan.End()
+	cm := ctx.Value(systemManagerKey).(*system.CleanupManager)
 
+	if config.DevstackShouldWriteEnvFile() {
+		cm.RegisterCallback(cleanupDevstackDotEnv)
+	}
 	cm.RegisterCallback(telemetry.Cleanup)
 
 	config.DevstackSetShouldPrintInfo()
@@ -204,5 +214,12 @@ func runDevstack(cmd *cobra.Command, ODs *devstack.DevStackOptions, OS *ServeOpt
 	<-ctx.Done() // block until killed
 
 	cmd.Println("Shutting down devstack")
+	return nil
+}
+
+func cleanupDevstackDotEnv() error {
+	if _, err := os.Stat(config.DevstackEnvFile()); err == nil {
+		return os.Remove(config.DevstackEnvFile())
+	}
 	return nil
 }

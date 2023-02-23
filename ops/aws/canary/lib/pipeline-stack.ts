@@ -62,7 +62,7 @@ export class PipelineStack extends cdk.Stack {
                     ],
                 },
                 {
-                    stageName: 'TestStaging',
+                    stageName: 'PreStagingVerification',
                     actions: [
                         new codepipeline_actions.CodeBuildAction({
                             actionName: 'IntegrationTest',
@@ -88,12 +88,16 @@ export class PipelineStack extends cdk.Stack {
                     ],
                 },
                 {
-                    stageName: 'TestProd',
+                    stageName: 'PreProdVerification',
                     actions: [
                         new codepipeline_actions.CodeBuildAction({
                             actionName: 'IntegrationTest',
                             project: this.getIntegrationTest(prodConfig),
                             input: sourceOutput,
+                        }),
+                        new codepipeline_actions.ManualApprovalAction({
+                            actionName: 'ManualApproval',
+                            additionalInformation: 'Approve the Canary deployment to production',
                         }),
                     ],
                 },
@@ -123,9 +127,11 @@ export class PipelineStack extends cdk.Stack {
                 version: '0.2',
                 phases: {
                     install: {
-                        'runtime-versions': {
-                            'golang': 1.18
-                        },
+                        commands: [
+                            'rm -rf `goenv root`',
+                            'curl --silent --show-error --location --fail https://go.dev/dl/go1.19.6.linux-amd64.tar.gz | tar --extract --gzip --file=- --directory=/usr/local',
+                            'ln -s /usr/local/go/bin/go /usr/local/bin/go',
+                        ],
                     },
                     build: {
                         commands: [
@@ -199,8 +205,9 @@ export class PipelineStack extends cdk.Stack {
                 phases: {
                     install: {
                         commands: [
-                            'export GOBIN=${HOME}/bin',
-                            'export PATH=$GOBIN:$PATH',
+                            'rm -rf `goenv root`',
+                            'curl --silent --show-error --location --fail https://go.dev/dl/go1.19.6.linux-amd64.tar.gz | tar --extract --gzip --file=- --directory=/usr/local',
+                            'ln -s /usr/local/go/bin/go /usr/local/bin/go',
                             'go install gotest.tools/gotestsum@v1.8.2',
                         ],
                     },

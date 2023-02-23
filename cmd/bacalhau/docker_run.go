@@ -1,7 +1,6 @@
 package bacalhau
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -10,9 +9,7 @@ import (
 	jobutils "github.com/filecoin-project/bacalhau/pkg/job"
 	"github.com/filecoin-project/bacalhau/pkg/model"
 	"github.com/filecoin-project/bacalhau/pkg/system"
-	"github.com/filecoin-project/bacalhau/pkg/telemetry"
 	"github.com/filecoin-project/bacalhau/pkg/util/templates"
-	"github.com/filecoin-project/bacalhau/pkg/version"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"k8s.io/kubectl/pkg/util/i18n"
@@ -124,17 +121,9 @@ func NewDockerRunOptions() *DockerRunOptions {
 
 func newDockerCmd() *cobra.Command {
 	dockerCmd := &cobra.Command{
-		Use:   "docker",
-		Short: "Run a docker job on the network (see run subcommand)",
-		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			// Check that the server version is compatible with the client version
-			serverVersion, _ := GetAPIClient().Version(cmd.Context()) // Ok if this fails, version validation will skip
-			if err := ensureValidVersion(cmd.Context(), version.Get(), serverVersion); err != nil {
-				cmd.Println(err.Error())
-				return err
-			}
-			return nil
-		},
+		Use:               "docker",
+		Short:             "Run a docker job on the network (see run subcommand)",
+		PersistentPreRunE: checkVersion,
 	}
 
 	dockerCmd.AddCommand(newDockerRunCmd())
@@ -281,15 +270,11 @@ func newDockerRunCmd() *cobra.Command { //nolint:funlen
 }
 
 func dockerRun(cmd *cobra.Command, cmdArgs []string, ODR *DockerRunOptions) error {
-	cm := system.NewCleanupManager()
-	defer cm.Cleanup()
 	ctx := cmd.Context()
 
-	ctx, rootSpan := system.NewRootSpan(ctx, system.GetTracer(), "cmd/bacalhau/dockerRun")
-	defer rootSpan.End()
-	cm.RegisterCallback(telemetry.Cleanup)
+	cm := cmd.Context().Value(systemManagerKey).(*system.CleanupManager)
 
-	j, err := CreateJob(ctx, cmdArgs, ODR)
+	j, err := CreateJob(cmdArgs, ODR)
 	if err != nil {
 		Fatal(cmd, fmt.Sprintf("Error creating job: %s", err), 1)
 		return nil
@@ -335,13 +320,7 @@ func dockerRun(cmd *cobra.Command, cmdArgs []string, ODR *DockerRunOptions) erro
 }
 
 // CreateJob creates a job object from the given command line arguments and options.
-func CreateJob(ctx context.Context,
-	cmdArgs []string,
-	odr *DockerRunOptions) (*model.Job, error) {
-	//nolint:ineffassign,staticcheck
-	_, span := system.GetTracer().Start(ctx, "cmd/bacalhau/dockerRun.ProcessAndExecuteJob")
-	defer span.End()
-
+func CreateJob(cmdArgs []string, odr *DockerRunOptions) (*model.Job, error) {
 	odr.Image = cmdArgs[0]
 	odr.Entrypoint = cmdArgs[1:]
 

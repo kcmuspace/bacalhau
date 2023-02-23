@@ -1,12 +1,10 @@
 package bacalhau
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/filecoin-project/bacalhau/pkg/bacerrors"
-	"github.com/filecoin-project/bacalhau/pkg/model"
-	"github.com/filecoin-project/bacalhau/pkg/system"
-	"github.com/filecoin-project/bacalhau/pkg/telemetry"
 	"github.com/filecoin-project/bacalhau/pkg/util/templates"
 	"github.com/spf13/cobra"
 	"k8s.io/kubectl/pkg/util/i18n"
@@ -35,12 +33,14 @@ type DescribeOptions struct {
 	Filename      string // Filename for job (can be .json or .yaml)
 	IncludeEvents bool   // Include events in the description
 	OutputSpec    bool   // Print Just the jobspec to stdout
+	JSON          bool   // Print description as JSON
 }
 
 func NewDescribeOptions() *DescribeOptions {
 	return &DescribeOptions{
 		IncludeEvents: false,
 		OutputSpec:    false,
+		JSON:          false,
 	}
 }
 
@@ -67,18 +67,20 @@ func newDescribeCmd() *cobra.Command {
 		&OD.IncludeEvents, "include-events", OD.IncludeEvents,
 		`Include events in the description (could be noisy)`,
 	)
+	describeCmd.PersistentFlags().BoolVar(
+		&OD.JSON, "json", OD.JSON,
+		`Output description as JSON (if not included will be outputted as YAML by default)`,
+	)
 
 	return describeCmd
 }
 
 func describe(cmd *cobra.Command, cmdArgs []string, OD *DescribeOptions) error {
-	cm := system.NewCleanupManager()
-	defer cm.Cleanup()
 	ctx := cmd.Context()
 
-	ctx, rootSpan := system.NewRootSpan(ctx, system.GetTracer(), "cmd/bacalhau/describe")
-	defer rootSpan.End()
-	cm.RegisterCallback(telemetry.Cleanup)
+	if err := cmd.ParseFlags(cmdArgs[1:]); err != nil {
+		Fatal(cmd, fmt.Sprintf("Failed to parse flags: %v\n", err), 1)
+	}
 
 	var err error
 	inputJobID := cmdArgs[0]
@@ -109,41 +111,33 @@ func describe(cmd *cobra.Command, cmdArgs []string, OD *DescribeOptions) error {
 		Fatal(cmd, "", 1)
 	}
 
-	shardStates, err := GetAPIClient().GetJobState(ctx, j.Metadata.ID)
-	if err != nil {
-		Fatal(cmd, fmt.Sprintf("Failure retrieving job states '%s': %s\n", j.Metadata.ID, err), 1)
-	}
-
-	jobEvents, err := GetAPIClient().GetEvents(ctx, j.Metadata.ID)
-	if err != nil {
-		Fatal(cmd, fmt.Sprintf("Failure retrieving job events '%s': %s\n", j.Metadata.ID, err), 1)
-	}
-
-	localEvents, err := GetAPIClient().GetLocalEvents(ctx, j.Metadata.ID)
-	if err != nil {
-		Fatal(cmd, fmt.Sprintf("Failure retrieving job events '%s': %s\n", j.Metadata.ID, err), 1)
-	}
-
 	jobDesc := j
-	jobDesc.Status.State = shardStates
 
 	if OD.IncludeEvents {
-		jobDesc.Status.Events = jobEvents
-		jobDesc.Status.LocalEvents = localEvents
+		jobEvents, innerErr := GetAPIClient().GetEvents(ctx, j.Job.Metadata.ID)
+		if innerErr != nil {
+			Fatal(cmd, fmt.Sprintf("Failure retrieving job events '%s': %s\n", j.Job.Metadata.ID, innerErr), 1)
+		}
+		jobDesc.History = jobEvents
 	}
 
-	b, err := model.JSONMarshalWithMax(jobDesc)
+	//b, err := model.JSONMarshalIndentWithMax(jobDesc, 3)
+	b, err := json.Marshal(jobDesc)
 	if err != nil {
-		Fatal(cmd, fmt.Sprintf("Failure marshaling job description '%s': %s\n", j.Metadata.ID, err), 1)
+		Fatal(cmd, fmt.Sprintf("Failure marshaling job description '%s': %s\n", j.Job.Metadata.ID, err), 1)
 	}
 
-	// Convert Json to Yaml
-	y, err := yaml.JSONToYAML(b)
-	if err != nil {
-		Fatal(cmd, fmt.Sprintf("Able to marshal to YAML but not JSON whatttt '%s': %s\n", j.Metadata.ID, err), 1)
+	if !OD.JSON {
+		// Convert Json to Yaml
+		y, err := yaml.JSONToYAML(b)
+		if err != nil {
+			Fatal(cmd, fmt.Sprintf("Able to marshal to YAML but not JSON whatttt '%s': %s\n", j.Job.Metadata.ID, err), 1)
+		}
+		cmd.Print(string(y))
+	} else {
+		// Print as Json
+		cmd.Print(string(b))
 	}
-
-	cmd.Print(string(y))
 
 	return nil
 }

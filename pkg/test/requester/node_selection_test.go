@@ -74,7 +74,7 @@ func (s *NodeSelectionSuite) SetupSuite() {
 	s.compute3 = stack.Nodes[3]
 	s.client = publicapi.NewRequesterAPIClient(s.requester.APIServer.GetURI())
 	s.stateResolver = job.NewStateResolver(
-		func(ctx context.Context, id string) (*model.Job, error) {
+		func(ctx context.Context, id string) (model.Job, error) {
 			return s.requester.RequesterNode.JobStore.GetJob(ctx, id)
 		},
 		func(ctx context.Context, id string) (model.JobState, error) {
@@ -88,10 +88,10 @@ func (s *NodeSelectionSuite) SetupSuite() {
 
 func (s *NodeSelectionSuite) TearDownSuite() {
 	if s.requester != nil {
-		s.requester.CleanupManager.Cleanup()
+		s.requester.CleanupManager.Cleanup(context.Background())
 	}
 	for _, n := range s.computeNodes {
-		n.CleanupManager.Cleanup()
+		n.CleanupManager.Cleanup(context.Background())
 	}
 }
 

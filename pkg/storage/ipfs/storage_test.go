@@ -21,7 +21,9 @@ const IpfsMetadataSize uint64 = 8
 func getIpfsStorage(t *testing.T) *StorageProvider {
 	ctx := context.Background()
 	cm := system.NewCleanupManager()
-	t.Cleanup(cm.Cleanup)
+	t.Cleanup(func() {
+		cm.Cleanup(context.Background())
+	})
 
 	node, err := ipfs.NewLocalNode(ctx, cm, []string{})
 	require.NoError(t, err)
@@ -42,7 +44,7 @@ func TestGetVolumeSize(t *testing.T) {
 		t.Run(testString, func(t *testing.T) {
 			storage := getIpfsStorage(t)
 
-			cid, err := ipfs.AddTextToNodes(ctx, []byte(testString), storage.IPFSClient)
+			cid, err := ipfs.AddTextToNodes(ctx, []byte(testString), storage.ipfsClient)
 			require.NoError(t, err)
 
 			result, err := storage.GetVolumeSize(ctx, model.StorageSpec{
@@ -63,13 +65,13 @@ func TestPrepareStorageRespectsTimeouts(t *testing.T) {
 		time.Minute,
 	} {
 		t.Run(fmt.Sprint(testDuration), func(t *testing.T) {
-			ctx := context.Background()
+			ctx, cancel := context.WithTimeout(context.Background(), testDuration)
+			defer cancel()
 			storage := getIpfsStorage(t)
 
-			cid, err := ipfs.AddTextToNodes(ctx, []byte("testString"), storage.IPFSClient)
+			cid, err := ipfs.AddTextToNodes(ctx, []byte("testString"), storage.ipfsClient)
 			require.NoError(t, err)
 
-			ctx = config.SetDownloadCidRequestTimeout(ctx, testDuration)
 			_, err = storage.PrepareStorage(ctx, model.StorageSpec{
 				StorageSource: model.StorageSourceIPFS,
 				CID:           cid,
@@ -89,7 +91,7 @@ func TestGetVolumeSizeRespectsTimeout(t *testing.T) {
 			ctx := context.Background()
 			storage := getIpfsStorage(t)
 
-			cid, err := ipfs.AddTextToNodes(ctx, []byte("testString"), storage.IPFSClient)
+			cid, err := ipfs.AddTextToNodes(ctx, []byte("testString"), storage.ipfsClient)
 			require.NoError(t, err)
 
 			ctx = config.SetVolumeSizeRequestTimeout(ctx, testDuration)

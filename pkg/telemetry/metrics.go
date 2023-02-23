@@ -16,16 +16,17 @@ import (
 var meterProvider *sdkmetric.MeterProvider
 
 func newMeterProvider() {
+	// The context passed in to the exporter is only passed to the client and used when connecting to the endpoint
+	ctx := context.Background()
+
 	if !isMetricsEnabled() {
-		log.Debug().Msgf("OLTP metrics endpoints are not defined. Not metrics will be exported")
+		log.Ctx(ctx).Debug().Msgf("OLTP metrics endpoints are not defined. No metrics will be exported")
 		return
 	}
 
-	// The context passed in to the exporter is only passed to the client and used when connecting to the endpoint
-	ctx := context.Background()
 	exp, err := getMetricsClient(ctx)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to initialize OLTP metric exporter")
+		log.Ctx(ctx).Error().Err(err).Msg("failed to initialize OLTP metric exporter")
 		return
 	}
 

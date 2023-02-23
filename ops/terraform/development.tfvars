@@ -1,5 +1,5 @@
-bacalhau_version       = "v0.3.18"
-bacalhau_branch        = ""
+bacalhau_version       = ""
+bacalhau_branch        = "main"
 bacalhau_port          = "1235"
 bacalhau_node_id_0     = "QmNXczFhX8oLEeuGThGowkcJDJUnX4HqoYQ2uaYhuCNSxD"
 bacalhau_node_id_1     = "QmfRDVYnEcPassyJFGQw8Wt4t9QuA843uuKPVNEVNm4Smo"
@@ -10,7 +10,7 @@ grafana_cloud_prometheus_endpoint  = "https://prometheus-us-central1.grafana.net
 loki_version                = "2.7.1"
 grafana_cloud_loki_user     = "6143"
 grafana_cloud_loki_endpoint = "logs-prod-us-central1.grafana.net"
-grafana_cloud_tempo_user    = "374169"
+grafana_cloud_tempo_user    = "76"
 grafana_cloud_tempo_endpoint = "tempo-us-central1.grafana.net:443"
 instance_count         = 2
 region                 = "europe-north1"
